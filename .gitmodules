@@ -1,0 +1,3 @@
+[submodule "DragonPlusServerUtils"]
+	path = DragonPlusServerUtils
+	url = git@github.com:FlyDragonGO/DragonPlusServerUtils.git
