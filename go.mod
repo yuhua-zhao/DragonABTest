@@ -6,9 +6,9 @@ require (
 	github.com/FlyDragonGO/DragonPlusServerUtils v0.0.0-00010101000000-000000000000
 	github.com/FlyDragonGO/ProtobufDefinition v0.0.0
 	github.com/prometheus/client_golang v1.7.0
+	github.com/spaolacci/murmur3 v1.1.0
 	go.elastic.co/apm/module/apmgrpc v1.13.1
 	go.mongodb.org/mongo-driver v1.9.1
-	go.vallahaye.net/protobson v0.2.1
 	google.golang.org/grpc v1.29.0
 )
 

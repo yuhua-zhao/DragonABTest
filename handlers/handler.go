@@ -7,6 +7,7 @@ import (
 	"github.com/yuhua-zhao/DragonABTest/service"
 
 	"github.com/FlyDragonGO/DragonPlusServerUtils/logging"
+	"github.com/FlyDragonGO/ProtobufDefinition/go/abtest"
 	pb "github.com/FlyDragonGO/ProtobufDefinition/go/grpc/abtest"
 )
 
@@ -21,7 +22,7 @@ var logger = logging.NewLogger("abtest", &logging.LogOptions{
 })
 
 func (*Handler) GetABTests(ctx context.Context, req *pb.GetABTestRequest) (*pb.GetABTestResponse, error) {
-	results, count, err := service.ListABTests(req.App, int(req.Limit), int(req.Offset), req.Status)
+	results, count, err := service.ListABTests(req.App, req.Status, int(req.Limit), int(req.Offset))
 	if err != nil {
 		return &pb.GetABTestResponse{
 			Status: &pb.CommonStatus{
@@ -44,12 +45,7 @@ func (*Handler) GetABTests(ctx context.Context, req *pb.GetABTestRequest) (*pb.G
 }
 
 func (*Handler) CreateABTest(ctx context.Context, req *pb.CreateABTestRequest) (*pb.CreateABTestResponse, error) {
-	logger.WithFields(map[string]interface{}{
-		"action": "read_error",
-		"app":    req.Item.App,
-		"abtest": req.Item,
-	}).Info("")
-	_, err := service.UpsertABTest(req.Item)
+	_, err := service.CreateABTest(req.Item)
 	if err == nil {
 		return &pb.CreateABTestResponse{
 			Status: &pb.CommonStatus{
@@ -68,13 +64,23 @@ func (*Handler) CreateABTest(ctx context.Context, req *pb.CreateABTestRequest) (
 }
 
 func (*Handler) UpdateABTest(ctx context.Context, req *pb.UpdateABTestRequest) (*pb.UpdateABTestResponse, error) {
-	logger.WithFields(map[string]interface{}{
-		"action": "read_error",
-		"app":    req.Item.App,
-		"abtest": req.Item,
-	}).Info("")
+	abtestItem, err := service.UpdateABTest(req.Item)
 
-	return &pb.UpdateABTestResponse{}, nil
+	if err != nil {
+		return &pb.UpdateABTestResponse{
+			Status: &pb.CommonStatus{
+				IsOk: false,
+				Msg:  err.Error(),
+			},
+		}, err
+	}
+	return &pb.UpdateABTestResponse{
+		Status: &pb.CommonStatus{
+			IsOk: true,
+			Msg:  "",
+		},
+		Item: abtestItem,
+	}, nil
 }
 
 func (*Handler) DeleteABTest(ctx context.Context, req *pb.DeleteABTestRequest) (*pb.DeleteABTestResponse, error) {
@@ -83,10 +89,11 @@ func (*Handler) DeleteABTest(ctx context.Context, req *pb.DeleteABTestRequest) (
 		"app":    req.App,
 		"abtest": req.AbtestId,
 	}).Info("")
+	service.TransABTestStatus(req.AbtestId, abtest.ABTestStatus_DELETED)
 	return &pb.DeleteABTestResponse{}, nil
 }
 
-func (*Handler) GetPersonasABTestConfig(ctx context.Context, req *pb.GetABTestConfigRequest) (*pb.GetABTestConfigResponse, error) {
+func (*Handler) GetABTestConfigByPersona(ctx context.Context, req *pb.GetABTestConfigRequest) (*pb.GetABTestConfigResponse, error) {
 	logger.WithFields(map[string]interface{}{
 		"action": "read_error",
 	}).Info("")
