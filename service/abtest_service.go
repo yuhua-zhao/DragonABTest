@@ -126,26 +126,33 @@ func TransABTestStatus(abtestId string, abtestStatus abtest.ABTestStatus) (bool,
 func GenerateABTestConfigByPersonas(persona *personas.Personas, filter interface{}) (map[string]string, error) {
 	nowTs := uint64(time.Now().Unix())
 	//currentPersonaABTestConfigs := persona.Abtest
-	etags := bson.A{}
+	// etags := bson.A{}
+	etags := make([]string, len(persona.Abtest))
 	for k := range persona.Abtest {
 		etags = append(etags, k)
 	}
 	var err error
+	mongoFilter := bson.M{
+		"app":        persona.App,
+		"status":     abtest.ABTestStatus_PUBLISHED,
+		"test_start": bson.M{"$lte": nowTs},
+		"test_end":   bson.M{"$gte": nowTs},
+	}
+	if len(etags) > 0 {
+		mongoFilter["last_etag"] = bson.M{
+			"$nin": bson.A{etags},
+		}
+	}
 	cursor, err := dao.GetInstance().ABTest.Find(
 		context.TODO(),
-		bson.M{
-			"app":        persona.App,
-			"status":     abtest.ABTestStatus_PUBLISHED,
-			"test_start": bson.M{"$lte": nowTs},
-			"test_end":   bson.M{"$gte": nowTs},
-			"last_etag":  bson.M{"$nin": etags},
-		},
+		mongoFilter,
 	)
 	if err != nil {
 		return nil, err
 	}
 	var daoResult []*dao.ABTestItemDao
 	cursor.All(context.TODO(), &daoResult)
+	fmt.Print(daoResult)
 
 	abtestMap := make(map[string]string, 20)
 
@@ -195,5 +202,5 @@ func GenerateABTestConfigByPersonas(persona *personas.Personas, filter interface
 			abtestMap[k] = v
 		}
 	}
-	return nil, nil
+	return abtestMap, nil
 }

@@ -97,5 +97,12 @@ func (*Handler) GetABTestConfigByPersona(ctx context.Context, req *pb.GetABTestC
 	logger.WithFields(map[string]interface{}{
 		"action": "read_error",
 	}).Info("")
-	return &pb.GetABTestConfigResponse{}, nil
+	abtestMap, err := service.GenerateABTestConfigByPersonas(req.Personas, req.Header)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.GetABTestConfigResponse{
+		AbtestConfig: abtestMap,
+	}, nil
 }
