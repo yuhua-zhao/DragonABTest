@@ -72,35 +72,17 @@ func UpdateABTest(abtestItem *abtest.ABTestItem) (*abtest.ABTestItem, error) {
 		return nil, err
 	}
 
-	replaceResult, err := dao.GetInstance().ABTest.ReplaceOne(
+	_, err = dao.GetInstance().ABTest.ReplaceOne(
 		context.TODO(),
 		bson.M{"_id": abTestObjectId},
 		abTestItemDao,
 	)
-	fmt.Println(replaceResult)
 
 	if err != nil {
 		return nil, err
 	}
 
 	return abtestItem, nil
-}
-
-// 根据ABTest Id 获取
-func GetById(abtestId string) (*dao.ABTestItemDao, error) {
-	abtestObjectId, err := primitive.ObjectIDFromHex(abtestId)
-	if err != nil {
-		return nil, err
-	}
-	singleResult := dao.GetInstance().ABTest.FindOne(
-		context.TODO(),
-		bson.M{
-			"_id": abtestObjectId,
-		},
-	)
-	fmt.Println(singleResult)
-	// singleResult.cursor
-	return nil, nil
 }
 
 // 删除ab测试
@@ -125,8 +107,6 @@ func TransABTestStatus(abtestId string, abtestStatus abtest.ABTestStatus) (bool,
 
 func GenerateABTestConfigByPersonas(persona *personas.Personas, filter interface{}) (map[string]string, error) {
 	nowTs := uint64(time.Now().Unix())
-	//currentPersonaABTestConfigs := persona.Abtest
-	// etags := bson.A{}
 	etags := make([]string, len(persona.Abtest))
 	for k := range persona.Abtest {
 		etags = append(etags, k)
@@ -143,6 +123,7 @@ func GenerateABTestConfigByPersonas(persona *personas.Personas, filter interface
 			"$nin": bson.A{etags},
 		}
 	}
+	fmt.Println(mongoFilter)
 	cursor, err := dao.GetInstance().ABTest.Find(
 		context.TODO(),
 		mongoFilter,
@@ -152,27 +133,20 @@ func GenerateABTestConfigByPersonas(persona *personas.Personas, filter interface
 	}
 	var daoResult []*dao.ABTestItemDao
 	cursor.All(context.TODO(), &daoResult)
-	fmt.Print(daoResult)
 
 	abtestMap := make(map[string]string, 20)
 
 	// 遍历筛选出的ab测
 	for _, daoItem := range daoResult {
-
 		var currentABTestFit = false
-
 		// 遍历ab测的过滤条件
 		for _, orCondition := range daoItem.OrConditions {
-
 			// 记录当前ab测的 "或" 条件
 			var currentOrConditionFlag = false
-
 			// 遍历该ab测下的 "或" 条件下的 "且" 条件
 			for _, andCondition := range orCondition.AndConditions {
-
 				// 记录当前的 "且" 条件
 				var currentAndConditionFlag = true
-
 				// 遍历该ab测下的 "或" 条件下的 "且" 条件的 过滤标准
 				for _, filterItem := range andCondition.Filters {
 					// 更新当前且条件的结果, 且条件不满足 可以跳了
@@ -181,14 +155,12 @@ func GenerateABTestConfigByPersonas(persona *personas.Personas, filter interface
 						break
 					}
 				}
-
 				// 根据且条件更新或条件, 如果已经满足就可以跳了
 				currentOrConditionFlag = currentOrConditionFlag || currentAndConditionFlag
 				if currentOrConditionFlag {
 					break
 				}
 			}
-
 			// 更新当前ab测的满足条件 如果满足 就跳
 			currentABTestFit = currentABTestFit || currentOrConditionFlag
 			if currentABTestFit {
@@ -198,8 +170,9 @@ func GenerateABTestConfigByPersonas(persona *personas.Personas, filter interface
 
 		// 当前ab测满足， 生成ab测配置
 		if currentABTestFit {
-			k, v := daoItem.GenerateABTestConfig(persona.App, persona.PlayerId)
-			abtestMap[k] = v
+			if k, v := daoItem.GenerateABTestConfig(persona.App, persona.PlayerId); k != "" {
+				abtestMap[k] = v
+			}
 		}
 	}
 	return abtestMap, nil

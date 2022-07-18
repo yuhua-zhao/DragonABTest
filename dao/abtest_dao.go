@@ -1,6 +1,7 @@
 package dao
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/FlyDragonGO/ProtobufDefinition/go/abtest"
@@ -155,7 +156,8 @@ func (filterDao *ABTestFilterDao) stringValueCompare(value string) (bool, error)
 
 func (filterDao *ABTestFilterDao) PersonasCompare(persona *personas.Personas) bool {
 
-	var flag bool = false
+	var flag bool
+	flag = false
 	switch filterDao.Key {
 	case "player_type":
 		flag, _ = filterDao.intValueCompare(uint64(persona.PlayerType))
@@ -245,8 +247,9 @@ func (filterDao *ABTestFilterDao) TransToProtobuf() *abtest.ABTestFilter {
 func (andConditionDao *ABTestAndConditionDao) TransToProtobuf() *abtest.ABTestAndCondition {
 	andCondition := &abtest.ABTestAndCondition{}
 	if andConditionDao.Filters != nil {
-		for _, v := range andConditionDao.Filters {
-			andCondition.Filters = append(andCondition.Filters, v.TransToProtobuf())
+		andCondition.Filters = make([]*abtest.ABTestFilter, len(andConditionDao.Filters))
+		for i, v := range andConditionDao.Filters {
+			andCondition.Filters[i] = v.TransToProtobuf()
 		}
 	}
 	return andCondition
@@ -255,8 +258,9 @@ func (andConditionDao *ABTestAndConditionDao) TransToProtobuf() *abtest.ABTestAn
 func (orConditionDao *ABTestOrConditionDao) TransToProtobuf() *abtest.ABTestOrCondition {
 	orCondition := &abtest.ABTestOrCondition{}
 	if orConditionDao.AndConditions != nil {
-		for _, v := range orConditionDao.AndConditions {
-			orCondition.AndConditions = append(orCondition.AndConditions, v.TransToProtobuf())
+		orCondition.AndConditions = make([]*abtest.ABTestAndCondition, len(orConditionDao.AndConditions))
+		for i, v := range orConditionDao.AndConditions {
+			orCondition.AndConditions[i] = v.TransToProtobuf()
 		}
 	}
 	return orCondition
@@ -276,13 +280,15 @@ func (abtestItemDao *ABTestItemDao) TransToProtobuf() *abtest.ABTestItem {
 	var experimentItems []*abtest.ExperimentItem
 
 	if abtestItemDao.OrConditions != nil {
-		for _, v := range abtestItemDao.OrConditions {
-			orConditions = append(orConditions, v.TransToProtobuf())
+		orConditions = make([]*abtest.ABTestOrCondition, len(abtestItemDao.OrConditions))
+		for i, v := range abtestItemDao.OrConditions {
+			orConditions[i] = v.TransToProtobuf()
 		}
 	}
 	if abtestItemDao.ExperimentItems != nil {
-		for _, v := range abtestItemDao.ExperimentItems {
-			experimentItems = append(experimentItems, v.TransToProtobuf())
+		experimentItems = make([]*abtest.ExperimentItem, len(abtestItemDao.ExperimentItems))
+		for i, v := range abtestItemDao.ExperimentItems {
+			experimentItems[i] = v.TransToProtobuf()
 		}
 	}
 	abtestItem := &abtest.ABTestItem{
@@ -324,10 +330,12 @@ func NewABTestFilterDao(abtestFilter *abtest.ABTestFilter) *ABTestFilterDao {
 }
 
 func NewABTestAndConditionDao(abTestAndConditions *abtest.ABTestAndCondition) *ABTestAndConditionDao {
-	filterDaos := []*ABTestFilterDao{}
-
-	for _, filterItem := range abTestAndConditions.Filters {
-		filterDaos = append(filterDaos, NewABTestFilterDao(filterItem))
+	var filterDaos []*ABTestFilterDao
+	if abTestAndConditions.Filters != nil && len(abTestAndConditions.Filters) > 0 {
+		filterDaos = make([]*ABTestFilterDao, len(abTestAndConditions.Filters))
+		for i, filterItem := range abTestAndConditions.Filters {
+			filterDaos[i] = NewABTestFilterDao(filterItem)
+		}
 	}
 
 	return &ABTestAndConditionDao{
@@ -336,9 +344,12 @@ func NewABTestAndConditionDao(abTestAndConditions *abtest.ABTestAndCondition) *A
 }
 
 func NewABTestOrConditionDao(abTestOrCondition *abtest.ABTestOrCondition) *ABTestOrConditionDao {
-	andConditionDaos := []*ABTestAndConditionDao{}
-	for _, andConditionItem := range abTestOrCondition.AndConditions {
-		andConditionDaos = append(andConditionDaos, NewABTestAndConditionDao(andConditionItem))
+	var andConditionDaos []*ABTestAndConditionDao
+	if abTestOrCondition.AndConditions != nil && len(abTestOrCondition.AndConditions) > 0 {
+		andConditionDaos = make([]*ABTestAndConditionDao, len(abTestOrCondition.AndConditions))
+		for i, andConditionItem := range abTestOrCondition.AndConditions {
+			andConditionDaos[i] = NewABTestAndConditionDao(andConditionItem)
+		}
 	}
 	return &ABTestOrConditionDao{
 		AndConditions: andConditionDaos,
@@ -374,18 +385,18 @@ func NewABTestItemDao(abtestItem *abtest.ABTestItem) *ABTestItemDao {
 		}
 	}
 
-	if abtestItem.OrConditions != nil {
-		orConditionDaos := []*ABTestOrConditionDao{}
-		for _, orCondition := range abtestItem.OrConditions {
-			orConditionDaos = append(orConditionDaos, NewABTestOrConditionDao(orCondition))
+	if abtestItem.OrConditions != nil && len(abtestItem.OrConditions) > 0 {
+		orConditionDaos := make([]*ABTestOrConditionDao, len(abtestItem.OrConditions))
+		for i, orCondition := range abtestItem.OrConditions {
+			orConditionDaos[i] = NewABTestOrConditionDao(orCondition)
 		}
 		abtestItemDao.OrConditions = orConditionDaos
 	}
 
-	if abtestItem.ExperimentItems != nil {
-		experimentItemDaos := []*ExperimentItemDao{}
-		for _, experimentItem := range abtestItem.ExperimentItems {
-			experimentItemDaos = append(experimentItemDaos, NewExperimentItemDao(experimentItem))
+	if abtestItem.ExperimentItems != nil && len(abtestItem.ExperimentItems) > 0 {
+		experimentItemDaos := make([]*ExperimentItemDao, len(abtestItem.ExperimentItems))
+		for i, experimentItem := range abtestItem.ExperimentItems {
+			experimentItemDaos[i] = NewExperimentItemDao(experimentItem)
 		}
 		abtestItemDao.ExperimentItems = experimentItemDaos
 	}
@@ -394,16 +405,14 @@ func NewABTestItemDao(abtestItem *abtest.ABTestItem) *ABTestItemDao {
 }
 
 func (abtestItemDao *ABTestItemDao) GenerateABTestConfig(app string, playerId uint64) (string, string) {
-	keys := []string{app, string(playerId), abtestItemDao.Id.Hex()}
-
+	keys := []string{app, fmt.Sprint(playerId), abtestItemDao.Id.Hex()}
 	hashInt := murmur3.Sum32([]byte(strings.Join(keys, "|")))
-
 	personaGroup := hashInt % 100
 
 	for _, experiment_item := range abtestItemDao.ExperimentItems {
 		for _, flow := range experiment_item.Flow {
 			if flow == personaGroup {
-				return abtestItemDao.ParameterKey, string(experiment_item.Id)
+				return abtestItemDao.ParameterKey, fmt.Sprint(experiment_item.Id)
 			}
 		}
 	}

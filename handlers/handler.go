@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"os"
 
 	"github.com/yuhua-zhao/DragonABTest/service"
 
@@ -15,13 +14,18 @@ type Handler struct {
 }
 
 var logger = logging.NewLogger("abtest", &logging.LogOptions{
-	KinesisStreamName: os.Getenv("KINESIS_STREAM_NAME"),
-	KinesisRegion:     os.Getenv("KINESIS_REGION"),
-	MaxSize:           16,
-	MaxBackups:        3,
+	// KinesisStreamName: os.Getenv("KINESIS_STREAM_NAME"),
+	// KinesisRegion:     os.Getenv("KINESIS_REGION"),
+	MaxSize:    16,
+	MaxBackups: 3,
 })
 
 func (*Handler) GetABTests(ctx context.Context, req *pb.GetABTestRequest) (*pb.GetABTestResponse, error) {
+	logger.WithFields(map[string]interface{}{
+		"app_name": req.App,
+		"action":   "list_abtests",
+		"status":   req.Status,
+	}).Info("")
 	results, count, err := service.ListABTests(req.App, req.Status, int(req.Limit), int(req.Offset))
 	if err != nil {
 		return &pb.GetABTestResponse{
@@ -84,25 +88,15 @@ func (*Handler) UpdateABTest(ctx context.Context, req *pb.UpdateABTestRequest) (
 }
 
 func (*Handler) DeleteABTest(ctx context.Context, req *pb.DeleteABTestRequest) (*pb.DeleteABTestResponse, error) {
-	logger.WithFields(map[string]interface{}{
-		"action": "read_error",
-		"app":    req.App,
-		"abtest": req.AbtestId,
-	}).Info("")
 	service.TransABTestStatus(req.AbtestId, abtest.ABTestStatus_DELETED)
 	return &pb.DeleteABTestResponse{}, nil
 }
 
 func (*Handler) GetABTestConfigByPersona(ctx context.Context, req *pb.GetABTestConfigRequest) (*pb.GetABTestConfigResponse, error) {
-	logger.WithFields(map[string]interface{}{
-		"action": "read_error",
-	}).Info("")
 	abtestMap, err := service.GenerateABTestConfigByPersonas(req.Personas, req.Header)
 	if err != nil {
 		return nil, err
 	}
 
-	return &pb.GetABTestConfigResponse{
-		AbtestConfig: abtestMap,
-	}, nil
+	return &pb.GetABTestConfigResponse{AbtestConfig: abtestMap}, nil
 }
