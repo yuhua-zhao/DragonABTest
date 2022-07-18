@@ -52,8 +52,7 @@ func waitForInterrupt() {
 	var signalChannel chan os.Signal
 	signalChannel = make(chan os.Signal, 1)
 	signal.Notify(signalChannel, os.Interrupt)
-	<-signalChannel
-
+	fmt.Println(<-signalChannel)
 	// stop grpc handlers
 	grpcStop()
 }

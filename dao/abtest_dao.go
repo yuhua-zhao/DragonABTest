@@ -155,9 +155,7 @@ func (filterDao *ABTestFilterDao) stringValueCompare(value string) (bool, error)
 }
 
 func (filterDao *ABTestFilterDao) PersonasCompare(persona *personas.Personas) bool {
-
-	var flag bool
-	flag = false
+	var flag bool = false
 	switch filterDao.Key {
 	case "player_type":
 		flag, _ = filterDao.intValueCompare(uint64(persona.PlayerType))
@@ -404,17 +402,29 @@ func NewABTestItemDao(abtestItem *abtest.ABTestItem) *ABTestItemDao {
 	return abtestItemDao
 }
 
-func (abtestItemDao *ABTestItemDao) GenerateABTestConfig(app string, playerId uint64) (string, string) {
-	keys := []string{app, fmt.Sprint(playerId), abtestItemDao.Id.Hex()}
-	hashInt := murmur3.Sum32([]byte(strings.Join(keys, "|")))
-	personaGroup := hashInt % 100
-
-	for _, experiment_item := range abtestItemDao.ExperimentItems {
-		for _, flow := range experiment_item.Flow {
-			if flow == personaGroup {
-				return abtestItemDao.ParameterKey, fmt.Sprint(experiment_item.Id)
+func (abtestItemDao *ABTestItemDao) EnsureABTestExperimentItemByFlow(flow uint32) uint32 {
+	for _, experimentItem := range abtestItemDao.ExperimentItems {
+		for _, experimentItemFlow := range experimentItem.Flow {
+			if experimentItemFlow == flow {
+				return experimentItem.Id
 			}
 		}
 	}
-	return "", ""
+	return 0
+}
+
+func (abtestItemDao *ABTestItemDao) GenerateABTestConfig(persona *personas.Personas) (uint32, uint32, string, string) {
+	// 已存在配置，进行二次计算
+	if value, founded := persona.AbtestConfig[abtestItemDao.ParameterKey]; founded {
+		groupId := abtestItemDao.EnsureABTestExperimentItemByFlow(value.UserFlow)
+		return groupId, value.UserFlow, abtestItemDao.ParameterKey, abtestItemDao.LastEtag
+	}
+
+	keys := []string{persona.App, fmt.Sprint(persona.PlayerId), abtestItemDao.Id.Hex()}
+	hashInt := murmur3.Sum32([]byte(strings.Join(keys, "|")))
+	personaFlowGroup := hashInt % 100
+
+	groupId := abtestItemDao.EnsureABTestExperimentItemByFlow(personaFlowGroup)
+	return groupId, personaFlowGroup, abtestItemDao.ParameterKey, abtestItemDao.LastEtag
+
 }

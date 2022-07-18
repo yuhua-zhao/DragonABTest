@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"time"
 	"unsafe"
 
@@ -105,39 +104,77 @@ func TransABTestStatus(abtestId string, abtestStatus abtest.ABTestStatus) (bool,
 	return true, nil
 }
 
-func GenerateABTestConfigByPersonas(persona *personas.Personas, filter interface{}) (map[string]string, error) {
-	nowTs := uint64(time.Now().Unix())
-	etags := make([]string, len(persona.Abtest))
-	for k := range persona.Abtest {
-		etags = append(etags, k)
-	}
+// func GetRemovedABTests(ctx context.Context, parameterKeys []string, app string) []string {
+// 	cursor, err := dao.GetInstance().ABTest.Find(
+// 		ctx,
+// 		bson.M{
+// 			"app": app,
+// 			"parameter_key": bson.M{
+// 				"$in": bson.A{parameterKeys},
+// 			},
+// 			"status": abtest.ABTestStatus_STOPPED,
+// 		},
+// 		&options.FindOptions{
+// 			Projection: bson.M{
+// 				"parameter_key": true,
+// 			},
+// 		},
+// 	)
+// 	if err != nil {
+// 		return []string{}
+// 	}
+// 	var stoppedParameterKeyList []string
+// 	cursor.All(ctx, &stoppedParameterKeyList)
+// 	return stoppedParameterKeyList
+// }
+
+func GenerateABTestConfigByPersonas(ctx context.Context, persona *personas.Personas, filter interface{}) (map[string]*personas.PersonaABTestPayload, error) {
 	var err error
+	var daoResult []*dao.ABTestItemDao
+
+	nowTs := uint64(time.Now().Unix())
+
+	// 生成 etags 列表
+	// etags := make([]string, len(persona.AbtestConfig))
+	// for _, v := range persona.AbtestConfig {
+	// 	etags = append(etags, v.LastEtag)
+	// }
+
+	// 生成mongo过滤条件
 	mongoFilter := bson.M{
 		"app":        persona.App,
 		"status":     abtest.ABTestStatus_PUBLISHED,
-		"test_start": bson.M{"$lte": nowTs},
 		"test_end":   bson.M{"$gte": nowTs},
+		"test_start": bson.M{"$lte": nowTs},
 	}
-	if len(etags) > 0 {
-		mongoFilter["last_etag"] = bson.M{
-			"$nin": bson.A{etags},
-		}
-	}
-	fmt.Println(mongoFilter)
+	// if len(etags) > 0 {
+	// 	mongoFilter["last_etag"] = bson.M{
+	// 		"$nin": bson.A{etags},
+	// 	}
+	// }
+
+	// 遍历cursor
+	var limit int64 = 20
 	cursor, err := dao.GetInstance().ABTest.Find(
-		context.TODO(),
+		ctx,
 		mongoFilter,
+		&options.FindOptions{
+			Sort:  bson.M{"test_end": -1},
+			Limit: &limit,
+		},
 	)
 	if err != nil {
 		return nil, err
 	}
-	var daoResult []*dao.ABTestItemDao
 	cursor.All(context.TODO(), &daoResult)
 
-	abtestMap := make(map[string]string, 20)
+	abtestMap := make(map[string]*personas.PersonaABTestPayload, limit)
 
 	// 遍历筛选出的ab测
 	for _, daoItem := range daoResult {
+		if value, founded := persona.AbtestConfig[daoItem.ParameterKey]; founded {
+			value.GroupId
+		}
 		var currentABTestFit = false
 		// 遍历ab测的过滤条件
 		for _, orCondition := range daoItem.OrConditions {
@@ -170,8 +207,12 @@ func GenerateABTestConfigByPersonas(persona *personas.Personas, filter interface
 
 		// 当前ab测满足， 生成ab测配置
 		if currentABTestFit {
-			if k, v := daoItem.GenerateABTestConfig(persona.App, persona.PlayerId); k != "" {
-				abtestMap[k] = v
+			if userFlow, groupId, lastEtag, parameterKey := daoItem.GenerateABTestConfig(persona); parameterKey != "" {
+				abtestMap[parameterKey] = &personas.PersonaABTestPayload{
+					GroupId:  groupId,
+					UserFlow: userFlow,
+					LastEtag: lastEtag,
+				}
 			}
 		}
 	}
