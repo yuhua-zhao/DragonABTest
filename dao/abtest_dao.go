@@ -1,15 +1,14 @@
+// @Description  服务于protobuf <-> dao <-> bson 之间的互相转换
+
 package dao
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/FlyDragonGO/ProtobufDefinition/go/abtest"
 	"github.com/FlyDragonGO/ProtobufDefinition/go/personas"
-	"github.com/spaolacci/murmur3"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+// 过滤条件的dao模型
 type ABTestFilterDao struct {
 	Key         string    `bson:"key"`
 	Operator    int32     `bson:"operator"`
@@ -21,14 +20,12 @@ type ABTestFilterDao struct {
 	FloatValues []float32 `bson:"float_values"`
 }
 
+// 合并的且逻辑的dao模型
 type ABTestAndConditionDao struct {
 	Filters []*ABTestFilterDao `bson:"filters"`
 }
 
-// type ABTestOrConditionDao struct {
-// 	AndConditions []*ABTestAndConditionDao `bson:"and_conditions"`
-// }
-
+// 实验(观察)组的dao模型
 type ExperimentItemDao struct {
 	Id     int32    `bson:"id"`
 	Config string   `bson:"config"`
@@ -36,6 +33,7 @@ type ExperimentItemDao struct {
 	Flow   []uint32 `bson:"flow"`
 }
 
+// ab测实体的dao模型
 type ABTestItemDao struct {
 	Id              primitive.ObjectID       `bson:"_id,omitempty"`
 	App             string                   `bson:"app"`
@@ -49,26 +47,40 @@ type ABTestItemDao struct {
 	Status          int32                    `bson:"status"`
 }
 
+// 基于filter dao模型做浮点类型数据比较
 func (filterDao *ABTestFilterDao) floatValueCompare(value float32) (bool, error) {
-	if filterDao.Operator == int32(abtest.FilterOperator_EQUAL) {
+	// ==
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_EQUAL {
 		return filterDao.FloatValue == value, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_NOT_EQUAL) {
+
+	// !=
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_NOT_EQUAL {
 		return filterDao.FloatValue != value, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_GREATER) {
+
+	// >
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_GREATER {
 		return filterDao.FloatValue > value, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_GREATER_EQUAL) {
+
+	// >=
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_GREATER_EQUAL {
 		return filterDao.FloatValue >= value, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_SMALLER) {
+
+	// <
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_SMALLER {
 		return filterDao.FloatValue < value, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_SMALLER_EQUAL) {
+
+	// <=
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_SMALLER_EQUAL {
 		return filterDao.FloatValue <= value, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_IN) {
+
+	// value in xxxx
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_IN {
 		for _, x := range filterDao.FloatValues {
 			if x == value {
 				return true, nil
@@ -76,7 +88,9 @@ func (filterDao *ABTestFilterDao) floatValueCompare(value float32) (bool, error)
 		}
 		return false, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_NOT_IN) {
+
+	// value not in xxxx
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_NOT_IN {
 		for _, x := range filterDao.FloatValues {
 			if x == value {
 				return false, nil
@@ -88,27 +102,40 @@ func (filterDao *ABTestFilterDao) floatValueCompare(value float32) (bool, error)
 	return false, nil
 }
 
+// 基于filter dao模型做整型类型数据比较
 func (filterDao *ABTestFilterDao) intValueCompare(value uint64) (bool, error) {
-
-	if filterDao.Operator == int32(abtest.FilterOperator_EQUAL) {
+	// ==
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_EQUAL {
 		return filterDao.IntValue == value, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_NOT_EQUAL) {
+
+	// !=
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_NOT_EQUAL {
 		return filterDao.IntValue != value, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_GREATER) {
+
+	// >
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_GREATER {
 		return filterDao.IntValue > value, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_GREATER_EQUAL) {
+
+	// >=
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_GREATER_EQUAL {
 		return filterDao.IntValue >= value, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_SMALLER) {
+
+	// <
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_SMALLER {
 		return filterDao.IntValue < value, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_SMALLER_EQUAL) {
+
+	// <=
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_SMALLER_EQUAL {
 		return filterDao.IntValue <= value, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_IN) {
+
+	// value in xxx
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_IN {
 		for _, x := range filterDao.IntValues {
 			if x == value {
 				return true, nil
@@ -116,7 +143,9 @@ func (filterDao *ABTestFilterDao) intValueCompare(value uint64) (bool, error) {
 		}
 		return false, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_NOT_IN) {
+
+	// value not in xxx
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_NOT_IN {
 		for _, x := range filterDao.IntValues {
 			if x == value {
 				return false, nil
@@ -124,17 +153,24 @@ func (filterDao *ABTestFilterDao) intValueCompare(value uint64) (bool, error) {
 		}
 		return true, nil
 	}
+
 	return false, nil
 }
 
+// 基于filter dao模型做字符类型数据比较
 func (filterDao *ABTestFilterDao) stringValueCompare(value string) (bool, error) {
-	if filterDao.Operator == int32(abtest.FilterOperator_EQUAL) {
+	// ==
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_EQUAL {
 		return value == filterDao.StrValue, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_NOT_EQUAL) {
-		return value == filterDao.StrValue, nil
+
+	// !=
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_NOT_EQUAL {
+		return value != filterDao.StrValue, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_IN) {
+
+	// value in [xxx]
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_IN {
 		for _, x := range filterDao.StrValues {
 			if x == value {
 				return true, nil
@@ -142,7 +178,9 @@ func (filterDao *ABTestFilterDao) stringValueCompare(value string) (bool, error)
 		}
 		return false, nil
 	}
-	if filterDao.Operator == int32(abtest.FilterOperator_NOT_IN) {
+
+	// value not in [xxx]
+	if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_NOT_IN {
 		for _, x := range filterDao.StrValues {
 			if x == value {
 				return false, nil
@@ -153,8 +191,11 @@ func (filterDao *ABTestFilterDao) stringValueCompare(value string) (bool, error)
 	return false, nil
 }
 
-func (filterDao *ABTestFilterDao) PersonasCompare(persona *personas.Personas) bool {
+// 基于filter dao模型进行personas是否满足条件的比较
+func (filterDao *ABTestFilterDao) personasCompare(persona *personas.Personas) bool {
+	// 默认不满足
 	var flag bool = false
+	// 根据key决定比较的数据类型
 	switch filterDao.Key {
 	case "player_type":
 		flag, _ = filterDao.intValueCompare(uint64(persona.PlayerType))
@@ -228,6 +269,48 @@ func (filterDao *ABTestFilterDao) PersonasCompare(persona *personas.Personas) bo
 	return flag
 }
 
+// 基于filter dao模型进行客户端的额外字段比较
+func (filterDao *ABTestFilterDao) filterCompare(clientFilter map[string]string) bool {
+	// 先确认字段在filter中存在
+	if clientValue, founded := clientFilter[filterDao.Key]; founded {
+		// ==
+		if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_EQUAL {
+			return clientValue == filterDao.StrValue
+		}
+
+		// !=
+		if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_NOT_EQUAL {
+			return clientValue != filterDao.StrValue
+		}
+
+		// value in [xxx]
+		if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_IN {
+			for _, strValue := range filterDao.StrValues {
+				if strValue == clientValue {
+					return true
+				}
+			}
+			return false
+		}
+
+		// value not in [xxx]
+		if abtest.FilterOperator(filterDao.Operator) == abtest.FilterOperator_EQUAL {
+			for _, strValue := range filterDao.StrValues {
+				if strValue == clientValue {
+					return false
+				}
+			}
+			return true
+		}
+
+		return false
+	} else {
+		// 如果不存在默认为
+		return true
+	}
+}
+
+// filter的dao -> proto转换
 func (filterDao *ABTestFilterDao) TransToProtobuf() *abtest.ABTestFilter {
 	return &abtest.ABTestFilter{
 		Key:         filterDao.Key,
@@ -241,6 +324,7 @@ func (filterDao *ABTestFilterDao) TransToProtobuf() *abtest.ABTestFilter {
 	}
 }
 
+// andCondition的dao -> proto转换
 func (andConditionDao *ABTestAndConditionDao) TransToProtobuf() *abtest.ABTestAndCondition {
 	andCondition := &abtest.ABTestAndCondition{}
 	if andConditionDao.Filters != nil {
@@ -252,6 +336,7 @@ func (andConditionDao *ABTestAndConditionDao) TransToProtobuf() *abtest.ABTestAn
 	return andCondition
 }
 
+// experimentItem的dao -> proto转换
 func (experimentItemDao *ExperimentItemDao) TransToProtobuf() *abtest.ExperimentItem {
 	return &abtest.ExperimentItem{
 		Id:     experimentItemDao.Id,
@@ -260,38 +345,40 @@ func (experimentItemDao *ExperimentItemDao) TransToProtobuf() *abtest.Experiment
 	}
 }
 
+// abtestItem的dao -> proto转换
 func (abtestItemDao *ABTestItemDao) TransToProtobuf() *abtest.ABTestItem {
-	var andConditions []*abtest.ABTestAndCondition
-	var experimentItems []*abtest.ExperimentItem
+	abtestItem := &abtest.ABTestItem{
+		Id:           abtestItemDao.Id.String(),
+		App:          abtestItemDao.App,
+		Name:         abtestItemDao.Name,
+		Desc:         abtestItemDao.Desc,
+		FlowLimit:    abtestItemDao.FlowLimit,
+		ParameterKey: abtestItemDao.ParameterKey,
+		LastEtag:     abtestItemDao.LastEtag,
+		Status:       abtest.ABTestStatus(abtestItemDao.Status),
+	}
 
 	if abtestItemDao.AndConditions != nil {
-		andConditions = make([]*abtest.ABTestAndCondition, len(abtestItemDao.AndConditions))
+		andConditions := make([]*abtest.ABTestAndCondition, len(abtestItemDao.AndConditions))
 		for i, v := range abtestItemDao.AndConditions {
 			andConditions[i] = v.TransToProtobuf()
 		}
+		abtestItem.AndConditions = andConditions
 	}
+
 	if abtestItemDao.ExperimentItems != nil {
-		experimentItems = make([]*abtest.ExperimentItem, len(abtestItemDao.ExperimentItems))
+		experimentItems := make([]*abtest.ExperimentItem, len(abtestItemDao.ExperimentItems))
 		for i, v := range abtestItemDao.ExperimentItems {
 			experimentItems[i] = v.TransToProtobuf()
 		}
+		abtestItem.ExperimentItems = experimentItems
 	}
-	abtestItem := &abtest.ABTestItem{
-		Id:              abtestItemDao.Id.String(),
-		App:             abtestItemDao.App,
-		Name:            abtestItemDao.Name,
-		Desc:            abtestItemDao.Desc,
-		FlowLimit:       abtestItemDao.FlowLimit,
-		ParameterKey:    abtestItemDao.ParameterKey,
-		AndConditions:   andConditions,
-		ExperimentItems: experimentItems,
-		LastEtag:        abtestItemDao.LastEtag,
-		Status:          abtest.ABTestStatus(abtestItemDao.Status),
-	}
+
 	abtestItem.Id = abtestItemDao.Id.String()
 	return abtestItem
 }
 
+// 将bson读出的list结果映射为proto list
 func MapABTestItemArray(abtestItemDaoArray []*ABTestItemDao) []*abtest.ABTestItem {
 	abtestItemArray := make([]*abtest.ABTestItem, len(abtestItemDaoArray))
 	for i, x := range abtestItemDaoArray {
@@ -300,6 +387,7 @@ func MapABTestItemArray(abtestItemDaoArray []*ABTestItemDao) []*abtest.ABTestIte
 	return abtestItemArray
 }
 
+// 从filter proto映射到dao
 func NewABTestFilterDao(abtestFilter *abtest.ABTestFilter) *ABTestFilterDao {
 	return &ABTestFilterDao{
 		Key:         abtestFilter.Key,
@@ -313,6 +401,7 @@ func NewABTestFilterDao(abtestFilter *abtest.ABTestFilter) *ABTestFilterDao {
 	}
 }
 
+// 从andCondition proto映射到dao
 func NewABTestAndConditionDao(abTestAndConditions *abtest.ABTestAndCondition) *ABTestAndConditionDao {
 	var filterDaos []*ABTestFilterDao
 	if abTestAndConditions.Filters != nil && len(abTestAndConditions.Filters) > 0 {
@@ -327,6 +416,7 @@ func NewABTestAndConditionDao(abTestAndConditions *abtest.ABTestAndCondition) *A
 	}
 }
 
+// 从experimentItem proto映射到dao
 func NewExperimentItemDao(experimentItem *abtest.ExperimentItem) *ExperimentItemDao {
 	return &ExperimentItemDao{
 		Id:     experimentItem.Id,
@@ -335,6 +425,7 @@ func NewExperimentItemDao(experimentItem *abtest.ExperimentItem) *ExperimentItem
 	}
 }
 
+// 从abtestItem proto映射到dao
 func NewABTestItemDao(abtestItem *abtest.ABTestItem) *ABTestItemDao {
 	abtestItemDao := &ABTestItemDao{
 		App:          abtestItem.App,
@@ -373,12 +464,17 @@ func NewABTestItemDao(abtestItem *abtest.ABTestItem) *ABTestItemDao {
 	return abtestItemDao
 }
 
-func (abtestItemDao *ABTestItemDao) EnsurePersonasFit(personas *personas.Personas) bool {
+// 确认personas和客户端的自定义filter符合当前ab测过滤条件
+func (abtestItemDao *ABTestItemDao) EnsurePersonasFit(personas *personas.Personas, filter map[string]string) bool {
 	var currentABTestFit = false
 	for _, andCondition := range abtestItemDao.AndConditions {
 		currentAndConditionFlag := true
 		for _, filterItem := range andCondition.Filters {
-			currentAndConditionFlag = currentAndConditionFlag && filterItem.PersonasCompare(personas)
+			currentAndConditionFlag = currentAndConditionFlag && filterItem.personasCompare(personas)
+			if !currentAndConditionFlag {
+				break
+			}
+			currentAndConditionFlag = currentAndConditionFlag && filterItem.filterCompare(filter)
 			if !currentAndConditionFlag {
 				break
 			}
@@ -389,14 +485,4 @@ func (abtestItemDao *ABTestItemDao) EnsurePersonasFit(personas *personas.Persona
 		}
 	}
 	return currentABTestFit
-}
-
-func (abtestItemDao *ABTestItemDao) EnsureABTestExperimentItemByFlow(flow uint32) uint32 {
-	experimentItemsLen := len(abtestItemDao.ExperimentItems)
-	return flow % uint32(experimentItemsLen)
-}
-
-func (abtestItemDao *ABTestItemDao) CalculatePersonasHash(personas *personas.Personas) uint32 {
-	keys := []string{personas.App, fmt.Sprint(personas.PlayerId), abtestItemDao.Id.Hex()}
-	return murmur3.Sum32([]byte(strings.Join(keys, "|"))) % 1000
 }

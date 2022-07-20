@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"context"
+	"errors"
+	"os"
 	"sync"
 
 	"github.com/yuhua-zhao/DragonABTest/service"
@@ -13,14 +15,16 @@ import (
 	"github.com/FlyDragonGO/ProtobufDefinition/go/personas"
 )
 
+// handler层
+// grpc实现与service层的交互
 type Handler struct {
 }
 
 var logger = logging.NewLogger("abtest", &logging.LogOptions{
-	// KinesisStreamName: os.Getenv("KINESIS_STREAM_NAME"),
-	// KinesisRegion:     os.Getenv("KINESIS_REGION"),
-	MaxSize:    16,
-	MaxBackups: 3,
+	KinesisStreamName: os.Getenv("KINESIS_STREAM_NAME"),
+	KinesisRegion:     os.Getenv("KINESIS_REGION"),
+	MaxSize:           16,
+	MaxBackups:        3,
 })
 
 func (*Handler) GetABTests(ctx context.Context, req *abtest_grpc.GetABTestRequest) (*abtest_grpc.GetABTestResponse, error) {
@@ -29,70 +33,50 @@ func (*Handler) GetABTests(ctx context.Context, req *abtest_grpc.GetABTestReques
 		"action":   "list_abtests",
 		"status":   req.Status,
 	}).Info("")
-	results, count, err := service.ListABTests(ctx, req.App, req.Status, int(req.Limit), int(req.Offset))
-	if err != nil {
+
+	if req.App == "" {
+		return nil, errors.New("app can not be empty")
+	}
+
+	if results, count, err := service.ListABTests(ctx, req.App, req.Status, req.Limit, req.Offset); err == nil {
 		return &abtest_grpc.GetABTestResponse{
-			Status: &abtest_grpc.CommonStatus{
-				IsOk: false,
-				Msg:  err.Error(),
-			},
-			Items: nil,
-			Total: 0,
-		}, err
-	} else {
-		return &abtest_grpc.GetABTestResponse{
-			Status: &abtest_grpc.CommonStatus{
-				IsOk: true,
-				Msg:  "",
-			},
 			Items: results,
 			Total: uint32(count),
 		}, nil
+	} else {
+		return nil, err
 	}
 }
 
 func (*Handler) CreateABTest(ctx context.Context, req *abtest_grpc.CreateABTestRequest) (*abtest_grpc.CreateABTestResponse, error) {
-	_, err := service.CreateABTest(ctx, req.Item)
-	if err == nil {
+	if createdAbtestItem, err := service.CreateABTest(ctx, req.Item); err == nil {
 		return &abtest_grpc.CreateABTestResponse{
-			Status: &abtest_grpc.CommonStatus{
-				IsOk: true,
-				Msg:  "",
-			},
+			Item: createdAbtestItem,
 		}, nil
 	} else {
-		return &abtest_grpc.CreateABTestResponse{
-			Status: &abtest_grpc.CommonStatus{
-				IsOk: false,
-				Msg:  err.Error(),
-			},
-		}, err
+		return nil, err
 	}
 }
 
 func (*Handler) UpdateABTest(ctx context.Context, req *abtest_grpc.UpdateABTestRequest) (*abtest_grpc.UpdateABTestResponse, error) {
-	abtestItem, err := service.UpdateABTest(ctx, req.Item)
-
-	if err != nil {
+	if updatedAbtestItem, err := service.UpdateABTest(ctx, req.Item); err == nil {
 		return &abtest_grpc.UpdateABTestResponse{
-			Status: &abtest_grpc.CommonStatus{
-				IsOk: false,
-				Msg:  err.Error(),
-			},
-		}, err
+			Item: updatedAbtestItem,
+		}, nil
+	} else {
+		return nil, err
 	}
-	return &abtest_grpc.UpdateABTestResponse{
-		Status: &abtest_grpc.CommonStatus{
-			IsOk: true,
-			Msg:  "",
-		},
-		Item: abtestItem,
-	}, nil
 }
 
 func (*Handler) DeleteABTest(ctx context.Context, req *abtest_grpc.DeleteABTestRequest) (*abtest_grpc.DeleteABTestResponse, error) {
-	service.TransABTestStatus(ctx, req.AbtestId, abtest.ABTestStatus_DELETED)
-	return &abtest_grpc.DeleteABTestResponse{}, nil
+
+	if status, err := service.TransABTestStatus(ctx, req.AbtestId, abtest.ABTestStatus_DELETED); err == nil {
+		return &abtest_grpc.DeleteABTestResponse{
+			Ack: status,
+		}, nil
+	} else {
+		return nil, err
+	}
 }
 
 func (*Handler) GetABTestConfigByPlayer(ctx context.Context, req *abtest_grpc.GetABTestConfigRequest) (*abtest_grpc.GetABTestConfigResponse, error) {

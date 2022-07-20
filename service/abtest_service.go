@@ -2,11 +2,14 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"unsafe"
 
 	"github.com/FlyDragonGO/ProtobufDefinition/go/abtest"
 	"github.com/FlyDragonGO/ProtobufDefinition/go/personas"
+	"github.com/spaolacci/murmur3"
 	"github.com/yuhua-zhao/DragonABTest/dao"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -18,21 +21,24 @@ func ListABTests(
 	ctx context.Context,
 	app string,
 	status abtest.ABTestStatus,
-	limit int,
-	offset int,
+	limit uint32,
+	offset uint32,
 ) ([]*abtest.ABTestItem, int64, error) {
-	filter := bson.M{}
-	if app != "" {
-		filter["app"] = app
+	filter := bson.M{
+		"app": app,
 	}
+
 	if status != abtest.ABTestStatus_UNKNOW {
 		filter["status"] = status
 	}
+
 	limit64, offset64 := int64(limit), int64(offset)
+
 	count, err := dao.GetInstance().ABTest.CountDocuments(ctx, filter)
 	if err != nil {
 		return nil, 0, err
 	}
+
 	cursor, err := dao.GetInstance().ABTest.Find(
 		ctx,
 		filter,
@@ -42,17 +48,20 @@ func ListABTests(
 			Limit: &limit64,
 		},
 	)
+
 	if err != nil {
 		return nil, 0, err
 	}
+
 	var daoResult []*dao.ABTestItemDao
 	cursor.All(ctx, &daoResult)
-	respResult := dao.MapABTestItemArray(daoResult)
-	return respResult, count, nil
+
+	return dao.MapABTestItemArray(daoResult), count, nil
 }
 
 // 创建ABTest
 func CreateABTest(ctx context.Context, abtestItem *abtest.ABTestItem) (*abtest.ABTestItem, error) {
+
 	abTestItemDao := dao.NewABTestItemDao(abtestItem)
 	insertResult, err := dao.GetInstance().ABTest.InsertOne(ctx, abTestItemDao)
 	if err != nil {
@@ -216,8 +225,9 @@ func GenerateABTestConfigByPersonas(ctx context.Context, personasItem *personas.
 		}
 
 		// 数据不存在，需要生成和计算hash
-		if !founded && daoItem.EnsurePersonasFit(personasItem) {
-			userHash := daoItem.CalculatePersonasHash(personasItem)
+		if !founded && daoItem.EnsurePersonasFit(personasItem, filter) {
+			keys := []string{personasItem.App, fmt.Sprint(personasItem.PlayerId), daoItem.Id.Hex()}
+			userHash := murmur3.Sum32([]byte(strings.Join(keys, "|"))) % 1000
 			groupId := int64(userHash) % experimentCount
 			abtestMap[parameterKey] = &personas.PersonaABTestPayload{
 				GroupId:  groupId,
