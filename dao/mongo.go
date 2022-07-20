@@ -27,7 +27,7 @@ func GetInstance() *MongoDao {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		clientOptions := options.Client().ApplyURI(uri).SetMaxPoolSize(50)
+		clientOptions := options.Client().ApplyURI(uri).SetMaxPoolSize(100)
 		client, err := mongo.Connect(ctx, clientOptions)
 
 		if err != nil {

@@ -25,29 +25,28 @@ type ABTestAndConditionDao struct {
 	Filters []*ABTestFilterDao `bson:"filters"`
 }
 
-type ABTestOrConditionDao struct {
-	AndConditions []*ABTestAndConditionDao `bson:"and_conditions"`
-}
+// type ABTestOrConditionDao struct {
+// 	AndConditions []*ABTestAndConditionDao `bson:"and_conditions"`
+// }
 
 type ExperimentItemDao struct {
-	Id     uint32   `bson:"id"`
+	Id     int32    `bson:"id"`
 	Config string   `bson:"config"`
 	Type   int32    `bson:"type"`
 	Flow   []uint32 `bson:"flow"`
 }
 
 type ABTestItemDao struct {
-	Id              primitive.ObjectID      `bson:"_id,omitempty"`
-	App             string                  `bson:"app"`
-	Name            string                  `bson:"name"`
-	Desc            string                  `bson:"desc"`
-	TestStart       uint64                  `bson:"test_start"`
-	TestEnd         uint64                  `bson:"test_end"`
-	ParameterKey    string                  `bson:"parameter_key"`
-	OrConditions    []*ABTestOrConditionDao `bson:"or_conditions"`
-	ExperimentItems []*ExperimentItemDao    `bson:"experiment_items"`
-	LastEtag        string                  `bson:"last_etag"`
-	Status          int32                   `bson:"status"`
+	Id              primitive.ObjectID       `bson:"_id,omitempty"`
+	App             string                   `bson:"app"`
+	Name            string                   `bson:"name"`
+	Desc            string                   `bson:"desc"`
+	FlowLimit       uint32                   `bson:"flow_limit"`
+	ParameterKey    string                   `bson:"parameter_key"`
+	AndConditions   []*ABTestAndConditionDao `bson:"and_conditions"`
+	ExperimentItems []*ExperimentItemDao     `bson:"experiment_items"`
+	LastEtag        string                   `bson:"last_etag"`
+	Status          int32                    `bson:"status"`
 }
 
 func (filterDao *ABTestFilterDao) floatValueCompare(value float32) (bool, error) {
@@ -253,34 +252,22 @@ func (andConditionDao *ABTestAndConditionDao) TransToProtobuf() *abtest.ABTestAn
 	return andCondition
 }
 
-func (orConditionDao *ABTestOrConditionDao) TransToProtobuf() *abtest.ABTestOrCondition {
-	orCondition := &abtest.ABTestOrCondition{}
-	if orConditionDao.AndConditions != nil {
-		orCondition.AndConditions = make([]*abtest.ABTestAndCondition, len(orConditionDao.AndConditions))
-		for i, v := range orConditionDao.AndConditions {
-			orCondition.AndConditions[i] = v.TransToProtobuf()
-		}
-	}
-	return orCondition
-}
-
 func (experimentItemDao *ExperimentItemDao) TransToProtobuf() *abtest.ExperimentItem {
 	return &abtest.ExperimentItem{
 		Id:     experimentItemDao.Id,
 		Config: experimentItemDao.Config,
 		Type:   abtest.ExperimentType(experimentItemDao.Type),
-		Flow:   experimentItemDao.Flow,
 	}
 }
 
 func (abtestItemDao *ABTestItemDao) TransToProtobuf() *abtest.ABTestItem {
-	var orConditions []*abtest.ABTestOrCondition
+	var andConditions []*abtest.ABTestAndCondition
 	var experimentItems []*abtest.ExperimentItem
 
-	if abtestItemDao.OrConditions != nil {
-		orConditions = make([]*abtest.ABTestOrCondition, len(abtestItemDao.OrConditions))
-		for i, v := range abtestItemDao.OrConditions {
-			orConditions[i] = v.TransToProtobuf()
+	if abtestItemDao.AndConditions != nil {
+		andConditions = make([]*abtest.ABTestAndCondition, len(abtestItemDao.AndConditions))
+		for i, v := range abtestItemDao.AndConditions {
+			andConditions[i] = v.TransToProtobuf()
 		}
 	}
 	if abtestItemDao.ExperimentItems != nil {
@@ -294,10 +281,9 @@ func (abtestItemDao *ABTestItemDao) TransToProtobuf() *abtest.ABTestItem {
 		App:             abtestItemDao.App,
 		Name:            abtestItemDao.Name,
 		Desc:            abtestItemDao.Desc,
-		TestStart:       abtestItemDao.TestStart,
-		TestEnd:         abtestItemDao.TestEnd,
+		FlowLimit:       abtestItemDao.FlowLimit,
 		ParameterKey:    abtestItemDao.ParameterKey,
-		OrConditions:    orConditions,
+		AndConditions:   andConditions,
 		ExperimentItems: experimentItems,
 		LastEtag:        abtestItemDao.LastEtag,
 		Status:          abtest.ABTestStatus(abtestItemDao.Status),
@@ -341,25 +327,11 @@ func NewABTestAndConditionDao(abTestAndConditions *abtest.ABTestAndCondition) *A
 	}
 }
 
-func NewABTestOrConditionDao(abTestOrCondition *abtest.ABTestOrCondition) *ABTestOrConditionDao {
-	var andConditionDaos []*ABTestAndConditionDao
-	if abTestOrCondition.AndConditions != nil && len(abTestOrCondition.AndConditions) > 0 {
-		andConditionDaos = make([]*ABTestAndConditionDao, len(abTestOrCondition.AndConditions))
-		for i, andConditionItem := range abTestOrCondition.AndConditions {
-			andConditionDaos[i] = NewABTestAndConditionDao(andConditionItem)
-		}
-	}
-	return &ABTestOrConditionDao{
-		AndConditions: andConditionDaos,
-	}
-}
-
 func NewExperimentItemDao(experimentItem *abtest.ExperimentItem) *ExperimentItemDao {
 	return &ExperimentItemDao{
 		Id:     experimentItem.Id,
 		Config: experimentItem.Config,
 		Type:   int32(experimentItem.Type),
-		Flow:   experimentItem.Flow,
 	}
 }
 
@@ -368,8 +340,7 @@ func NewABTestItemDao(abtestItem *abtest.ABTestItem) *ABTestItemDao {
 		App:          abtestItem.App,
 		Name:         abtestItem.Name,
 		Desc:         abtestItem.Desc,
-		TestStart:    abtestItem.TestStart,
-		TestEnd:      abtestItem.TestEnd,
+		FlowLimit:    abtestItem.FlowLimit,
 		ParameterKey: abtestItem.ParameterKey,
 		LastEtag:     abtestItem.LastEtag,
 		Status:       int32(abtestItem.Status),
@@ -383,12 +354,12 @@ func NewABTestItemDao(abtestItem *abtest.ABTestItem) *ABTestItemDao {
 		}
 	}
 
-	if abtestItem.OrConditions != nil && len(abtestItem.OrConditions) > 0 {
-		orConditionDaos := make([]*ABTestOrConditionDao, len(abtestItem.OrConditions))
-		for i, orCondition := range abtestItem.OrConditions {
-			orConditionDaos[i] = NewABTestOrConditionDao(orCondition)
+	if abtestItem.AndConditions != nil && len(abtestItem.AndConditions) > 0 {
+		andConditionDaos := make([]*ABTestAndConditionDao, len(abtestItem.AndConditions))
+		for i, andCondition := range abtestItem.AndConditions {
+			andConditionDaos[i] = NewABTestAndConditionDao(andCondition)
 		}
-		abtestItemDao.OrConditions = orConditionDaos
+		abtestItemDao.AndConditions = andConditionDaos
 	}
 
 	if abtestItem.ExperimentItems != nil && len(abtestItem.ExperimentItems) > 0 {
@@ -402,29 +373,30 @@ func NewABTestItemDao(abtestItem *abtest.ABTestItem) *ABTestItemDao {
 	return abtestItemDao
 }
 
-func (abtestItemDao *ABTestItemDao) EnsureABTestExperimentItemByFlow(flow uint32) uint32 {
-	for _, experimentItem := range abtestItemDao.ExperimentItems {
-		for _, experimentItemFlow := range experimentItem.Flow {
-			if experimentItemFlow == flow {
-				return experimentItem.Id
+func (abtestItemDao *ABTestItemDao) EnsurePersonasFit(personas *personas.Personas) bool {
+	var currentABTestFit = false
+	for _, andCondition := range abtestItemDao.AndConditions {
+		currentAndConditionFlag := true
+		for _, filterItem := range andCondition.Filters {
+			currentAndConditionFlag = currentAndConditionFlag && filterItem.PersonasCompare(personas)
+			if !currentAndConditionFlag {
+				break
 			}
 		}
+		currentABTestFit = currentABTestFit || currentAndConditionFlag
+		if currentABTestFit {
+			break
+		}
 	}
-	return 0
+	return currentABTestFit
 }
 
-func (abtestItemDao *ABTestItemDao) GenerateABTestConfig(persona *personas.Personas) (uint32, uint32, string, string) {
-	// 已存在配置，进行二次计算
-	if value, founded := persona.AbtestConfig[abtestItemDao.ParameterKey]; founded {
-		groupId := abtestItemDao.EnsureABTestExperimentItemByFlow(value.UserFlow)
-		return groupId, value.UserFlow, abtestItemDao.ParameterKey, abtestItemDao.LastEtag
-	}
+func (abtestItemDao *ABTestItemDao) EnsureABTestExperimentItemByFlow(flow uint32) uint32 {
+	experimentItemsLen := len(abtestItemDao.ExperimentItems)
+	return flow % uint32(experimentItemsLen)
+}
 
-	keys := []string{persona.App, fmt.Sprint(persona.PlayerId), abtestItemDao.Id.Hex()}
-	hashInt := murmur3.Sum32([]byte(strings.Join(keys, "|")))
-	personaFlowGroup := hashInt % 100
-
-	groupId := abtestItemDao.EnsureABTestExperimentItemByFlow(personaFlowGroup)
-	return groupId, personaFlowGroup, abtestItemDao.ParameterKey, abtestItemDao.LastEtag
-
+func (abtestItemDao *ABTestItemDao) CalculatePersonasHash(personas *personas.Personas) uint32 {
+	keys := []string{personas.App, fmt.Sprint(personas.PlayerId), abtestItemDao.Id.Hex()}
+	return murmur3.Sum32([]byte(strings.Join(keys, "|"))) % 1000
 }

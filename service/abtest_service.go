@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"time"
+	"sync"
 	"unsafe"
 
 	"github.com/FlyDragonGO/ProtobufDefinition/go/abtest"
@@ -15,6 +15,7 @@ import (
 
 // 列出ABTest
 func ListABTests(
+	ctx context.Context,
 	app string,
 	status abtest.ABTestStatus,
 	limit int,
@@ -28,12 +29,12 @@ func ListABTests(
 		filter["status"] = status
 	}
 	limit64, offset64 := int64(limit), int64(offset)
-	count, err := dao.GetInstance().ABTest.CountDocuments(context.TODO(), filter)
+	count, err := dao.GetInstance().ABTest.CountDocuments(ctx, filter)
 	if err != nil {
 		return nil, 0, err
 	}
 	cursor, err := dao.GetInstance().ABTest.Find(
-		context.TODO(),
+		ctx,
 		filter,
 		&options.FindOptions{
 			Sort:  map[string]int{"test_end": -1},
@@ -45,15 +46,15 @@ func ListABTests(
 		return nil, 0, err
 	}
 	var daoResult []*dao.ABTestItemDao
-	cursor.All(context.TODO(), &daoResult)
+	cursor.All(ctx, &daoResult)
 	respResult := dao.MapABTestItemArray(daoResult)
 	return respResult, count, nil
 }
 
 // 创建ABTest
-func CreateABTest(abtestItem *abtest.ABTestItem) (*abtest.ABTestItem, error) {
+func CreateABTest(ctx context.Context, abtestItem *abtest.ABTestItem) (*abtest.ABTestItem, error) {
 	abTestItemDao := dao.NewABTestItemDao(abtestItem)
-	insertResult, err := dao.GetInstance().ABTest.InsertOne(context.TODO(), abTestItemDao)
+	insertResult, err := dao.GetInstance().ABTest.InsertOne(ctx, abTestItemDao)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +64,7 @@ func CreateABTest(abtestItem *abtest.ABTestItem) (*abtest.ABTestItem, error) {
 }
 
 // 更新ABTest
-func UpdateABTest(abtestItem *abtest.ABTestItem) (*abtest.ABTestItem, error) {
+func UpdateABTest(ctx context.Context, abtestItem *abtest.ABTestItem) (*abtest.ABTestItem, error) {
 	abTestItemDao := dao.NewABTestItemDao(abtestItem)
 	var err error
 	abTestObjectId, err := primitive.ObjectIDFromHex(abtestItem.Id)
@@ -72,7 +73,7 @@ func UpdateABTest(abtestItem *abtest.ABTestItem) (*abtest.ABTestItem, error) {
 	}
 
 	_, err = dao.GetInstance().ABTest.ReplaceOne(
-		context.TODO(),
+		ctx,
 		bson.M{"_id": abTestObjectId},
 		abTestItemDao,
 	)
@@ -85,13 +86,13 @@ func UpdateABTest(abtestItem *abtest.ABTestItem) (*abtest.ABTestItem, error) {
 }
 
 // 删除ab测试
-func TransABTestStatus(abtestId string, abtestStatus abtest.ABTestStatus) (bool, error) {
+func TransABTestStatus(ctx context.Context, abtestId string, abtestStatus abtest.ABTestStatus) (bool, error) {
 	abtestObjectId, err := primitive.ObjectIDFromHex(abtestId)
 	if err != nil {
 		return false, err
 	}
 	dao.GetInstance().ABTest.UpdateOne(
-		context.TODO(),
+		ctx,
 		bson.M{
 			"_id": abtestObjectId,
 		},
@@ -104,54 +105,73 @@ func TransABTestStatus(abtestId string, abtestStatus abtest.ABTestStatus) (bool,
 	return true, nil
 }
 
-// func GetRemovedABTests(ctx context.Context, parameterKeys []string, app string) []string {
-// 	cursor, err := dao.GetInstance().ABTest.Find(
-// 		ctx,
-// 		bson.M{
-// 			"app": app,
-// 			"parameter_key": bson.M{
-// 				"$in": bson.A{parameterKeys},
-// 			},
-// 			"status": abtest.ABTestStatus_STOPPED,
-// 		},
-// 		&options.FindOptions{
-// 			Projection: bson.M{
-// 				"parameter_key": true,
-// 			},
-// 		},
-// 	)
-// 	if err != nil {
-// 		return []string{}
-// 	}
-// 	var stoppedParameterKeyList []string
-// 	cursor.All(ctx, &stoppedParameterKeyList)
-// 	return stoppedParameterKeyList
-// }
+func AsyncGetRemovedABTests(
+	wg *sync.WaitGroup,
+	resultChan chan []string,
+	app string,
+	parameterKeys []string,
+) {
+	defer wg.Done()
+	removedKeys := GetRemovedABTests(context.TODO(), parameterKeys, app)
+	resultChan <- removedKeys
+}
 
-func GenerateABTestConfigByPersonas(ctx context.Context, persona *personas.Personas, filter interface{}) (map[string]*personas.PersonaABTestPayload, error) {
+func GetRemovedABTests(ctx context.Context, parameterKeys []string, app string) []string {
+	cursor, err := dao.GetInstance().ABTest.Find(
+		ctx,
+		bson.M{
+			"app": app,
+			"parameter_key": bson.M{
+				"$in": bson.A{parameterKeys},
+			},
+			"status": abtest.ABTestStatus_STOPPED,
+		},
+		&options.FindOptions{
+			Projection: bson.M{
+				"parameter_key": true,
+			},
+		},
+	)
+	if err != nil {
+		return []string{}
+	}
+	var stoppedParameterKeyList []string
+	cursor.All(ctx, &stoppedParameterKeyList)
+	return stoppedParameterKeyList
+}
+
+func AsyncGenerateABTestConfigByPersonas(
+	wg *sync.WaitGroup,
+	resultChan chan map[string]*personas.PersonaABTestPayload,
+	personasItem *personas.Personas,
+	filter map[string]string,
+) {
+	defer wg.Done()
+	if abtestMap, err := GenerateABTestConfigByPersonas(context.TODO(), personasItem, filter); err == nil {
+		resultChan <- abtestMap
+	}
+}
+
+func GenerateABTestConfigByPersonas(ctx context.Context, personasItem *personas.Personas, filter map[string]string) (map[string]*personas.PersonaABTestPayload, error) {
 	var err error
 	var daoResult []*dao.ABTestItemDao
 
-	nowTs := uint64(time.Now().Unix())
-
 	// 生成 etags 列表
-	// etags := make([]string, len(persona.AbtestConfig))
-	// for _, v := range persona.AbtestConfig {
-	// 	etags = append(etags, v.LastEtag)
-	// }
+	etags := make([]string, len(personasItem.AbtestConfig))
+	for _, v := range personasItem.AbtestConfig {
+		etags = append(etags, v.LastEtag)
+	}
 
 	// 生成mongo过滤条件
 	mongoFilter := bson.M{
-		"app":        persona.App,
-		"status":     abtest.ABTestStatus_PUBLISHED,
-		"test_end":   bson.M{"$gte": nowTs},
-		"test_start": bson.M{"$lte": nowTs},
+		"app":    personasItem.App,
+		"status": abtest.ABTestStatus_PUBLISHED,
 	}
-	// if len(etags) > 0 {
-	// 	mongoFilter["last_etag"] = bson.M{
-	// 		"$nin": bson.A{etags},
-	// 	}
-	// }
+	if len(etags) > 0 {
+		mongoFilter["last_etag"] = bson.M{
+			"$nin": bson.A{etags},
+		}
+	}
 
 	// 遍历cursor
 	var limit int64 = 20
@@ -159,60 +179,50 @@ func GenerateABTestConfigByPersonas(ctx context.Context, persona *personas.Perso
 		ctx,
 		mongoFilter,
 		&options.FindOptions{
-			Sort:  bson.M{"test_end": -1},
+			Sort:  bson.M{"_id": -1},
 			Limit: &limit,
 		},
 	)
 	if err != nil {
 		return nil, err
 	}
-	cursor.All(context.TODO(), &daoResult)
-
+	cursor.All(ctx, &daoResult)
 	abtestMap := make(map[string]*personas.PersonaABTestPayload, limit)
 
 	// 遍历筛选出的ab测
 	for _, daoItem := range daoResult {
-		if value, founded := persona.AbtestConfig[daoItem.ParameterKey]; founded {
-			value.GroupId
-		}
-		var currentABTestFit = false
-		// 遍历ab测的过滤条件
-		for _, orCondition := range daoItem.OrConditions {
-			// 记录当前ab测的 "或" 条件
-			var currentOrConditionFlag = false
-			// 遍历该ab测下的 "或" 条件下的 "且" 条件
-			for _, andCondition := range orCondition.AndConditions {
-				// 记录当前的 "且" 条件
-				var currentAndConditionFlag = true
-				// 遍历该ab测下的 "或" 条件下的 "且" 条件的 过滤标准
-				for _, filterItem := range andCondition.Filters {
-					// 更新当前且条件的结果, 且条件不满足 可以跳了
-					currentAndConditionFlag = currentAndConditionFlag && filterItem.PersonasCompare(persona)
-					if !currentAndConditionFlag {
-						break
-					}
-				}
-				// 根据且条件更新或条件, 如果已经满足就可以跳了
-				currentOrConditionFlag = currentOrConditionFlag || currentAndConditionFlag
-				if currentOrConditionFlag {
-					break
-				}
-			}
-			// 更新当前ab测的满足条件 如果满足 就跳
-			currentABTestFit = currentABTestFit || currentOrConditionFlag
-			if currentABTestFit {
-				break
+
+		// 拉已有的数据
+		parameterKey := daoItem.ParameterKey
+		abtestConfig, founded := personasItem.AbtestConfig[parameterKey]
+		experimentCount := int64(len(daoItem.ExperimentItems))
+
+		// 检测到存在配置，且分组数据需要移除(整体流量被缩)
+		if founded && abtestConfig.GroupId != -1 && abtestConfig.UserHash > daoItem.FlowLimit {
+			abtestMap[parameterKey] = &personas.PersonaABTestPayload{
+				GroupId:  -1,
+				UserHash: abtestConfig.UserHash,
+				LastEtag: daoItem.LastEtag,
 			}
 		}
 
-		// 当前ab测满足， 生成ab测配置
-		if currentABTestFit {
-			if userFlow, groupId, lastEtag, parameterKey := daoItem.GenerateABTestConfig(persona); parameterKey != "" {
-				abtestMap[parameterKey] = &personas.PersonaABTestPayload{
-					GroupId:  groupId,
-					UserFlow: userFlow,
-					LastEtag: lastEtag,
-				}
+		// 检查到存在配置，且需要更新分组数据
+		if founded && abtestConfig.GroupId == -1 && abtestConfig.UserHash <= daoItem.FlowLimit {
+			abtestMap[parameterKey] = &personas.PersonaABTestPayload{
+				GroupId:  int64(abtestConfig.UserHash) % experimentCount,
+				UserHash: abtestConfig.UserHash,
+				LastEtag: daoItem.LastEtag,
+			}
+		}
+
+		// 数据不存在，需要生成和计算hash
+		if !founded && daoItem.EnsurePersonasFit(personasItem) {
+			userHash := daoItem.CalculatePersonasHash(personasItem)
+			groupId := int64(userHash) % experimentCount
+			abtestMap[parameterKey] = &personas.PersonaABTestPayload{
+				GroupId:  groupId,
+				UserHash: userHash,
+				LastEtag: daoItem.LastEtag,
 			}
 		}
 	}
