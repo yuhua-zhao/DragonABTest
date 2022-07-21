@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/FlyDragonGO/ProtobufDefinition/go/abtest"
@@ -15,6 +16,10 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+func nowTs() primitive.Timestamp {
+	return primitive.Timestamp{T: uint32(time.Now().Unix())}
+}
 
 // 列出ABTest
 func ListABTests(
@@ -61,8 +66,12 @@ func ListABTests(
 
 // 创建ABTest
 func CreateABTest(ctx context.Context, abtestItem *abtest.ABTestItem) (*abtest.ABTestItem, error) {
-
+	// TODO: 检查实验组是否存在，观察组是否存在
+	// TODO: 考虑复制一个实验怎么写
 	abTestItemDao := dao.NewABTestItemDao(abtestItem)
+	ts := nowTs()
+	abTestItemDao.CreatedAt = ts
+	abTestItemDao.UpdatedAt = ts
 	insertResult, err := dao.GetInstance().ABTest.InsertOne(ctx, abTestItemDao)
 	if err != nil {
 		return nil, err
@@ -74,6 +83,7 @@ func CreateABTest(ctx context.Context, abtestItem *abtest.ABTestItem) (*abtest.A
 
 // 更新ABTest
 func UpdateABTest(ctx context.Context, abtestItem *abtest.ABTestItem) (*abtest.ABTestItem, error) {
+	// TODO: 改成 $set 方式 只更新可更新内容, 不可更新内容不动
 	abTestItemDao := dao.NewABTestItemDao(abtestItem)
 	var err error
 	abTestObjectId, err := primitive.ObjectIDFromHex(abtestItem.Id)
@@ -94,26 +104,45 @@ func UpdateABTest(ctx context.Context, abtestItem *abtest.ABTestItem) (*abtest.A
 	return abtestItem, nil
 }
 
-// 删除ab测试
-func TransABTestStatus(ctx context.Context, abtestId string, abtestStatus abtest.ABTestStatus) (bool, error) {
+// 更新ab测状态
+func TransABTestStatus(ctx context.Context, abtestId string, toAbtestStatus abtest.ABTestStatus) (bool, error) {
 	abtestObjectId, err := primitive.ObjectIDFromHex(abtestId)
 	if err != nil {
 		return false, err
 	}
-	dao.GetInstance().ABTest.UpdateOne(
+
+	// ab测状态迁移限制
+	abtestStatusTransFromMap := map[abtest.ABTestStatus][]abtest.ABTestStatus{
+		abtest.ABTestStatus_DELETED:   {abtest.ABTestStatus_DRAFT, abtest.ABTestStatus_PUBLISHED, abtest.ABTestStatus_STOPPED},
+		abtest.ABTestStatus_PUBLISHED: {abtest.ABTestStatus_DRAFT},
+		abtest.ABTestStatus_STOPPED:   {abtest.ABTestStatus_PUBLISHED},
+	}
+
+	// 确认原始abtest条件
+	filter := bson.M{"_id": abtestObjectId}
+	if fromStatus, founded := abtestStatusTransFromMap[toAbtestStatus]; founded {
+		filter["status"] = bson.M{"$in": bson.A{fromStatus}}
+	}
+
+	updateResult, err := dao.GetInstance().ABTest.UpdateOne(
 		ctx,
-		bson.M{
-			"_id": abtestObjectId,
-		},
+		filter,
 		bson.M{
 			"$set": bson.M{
-				"status": abtest.ABTestStatus_DELETED,
+				"status":     abtest.ABTestStatus_DELETED,
+				"updated_at": nowTs(),
 			},
 		},
 	)
-	return true, nil
+	if err != nil {
+		return false, err
+	}
+
+	// 确认发生了更新行为
+	return updateResult.MatchedCount == 1 && updateResult.ModifiedCount == 1, nil
 }
 
+// 异步包装的获取被移除的ABTests列表
 func AsyncGetRemovedABTests(
 	wg *sync.WaitGroup,
 	resultChan chan []string,
@@ -133,7 +162,9 @@ func GetRemovedABTests(ctx context.Context, parameterKeys []string, app string) 
 			"parameter_key": bson.M{
 				"$in": bson.A{parameterKeys},
 			},
-			"status": abtest.ABTestStatus_STOPPED,
+			"status": bson.M{
+				"$in": bson.A{abtest.ABTestStatus_DELETED, abtest.ABTestStatus_STOPPED},
+			},
 		},
 		&options.FindOptions{
 			Projection: bson.M{

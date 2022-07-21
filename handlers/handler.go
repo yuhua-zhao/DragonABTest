@@ -34,8 +34,14 @@ func (*Handler) GetABTests(ctx context.Context, req *abtest_grpc.GetABTestReques
 		"status":   req.Status,
 	}).Info("")
 
+	// 如果没有app 抛错
 	if req.App == "" {
 		return nil, errors.New("app can not be empty")
+	}
+
+	// 默认limit 20
+	if req.Limit == 0 {
+		req.Limit = 20
 	}
 
 	if results, count, err := service.ListABTests(ctx, req.App, req.Status, req.Limit, req.Offset); err == nil {

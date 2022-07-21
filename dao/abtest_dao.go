@@ -45,6 +45,8 @@ type ABTestItemDao struct {
 	ExperimentItems []*ExperimentItemDao     `bson:"experiment_items"`
 	LastEtag        string                   `bson:"last_etag"`
 	Status          int32                    `bson:"status"`
+	CreatedAt       primitive.Timestamp      `bson:"created_at"`
+	UpdatedAt       primitive.Timestamp      `bson:"updated_at"`
 }
 
 // 基于filter dao模型做浮点类型数据比较
